@@ -4,14 +4,14 @@ exp_name: vlm_exp
 output_parent_dir: results
 question_data_path: data/questions.csv
 init_pose_data_path: data/scene_init_poses.csv
-scene_data_path: /n/fs/llm-unc/hm3dsem-train
+scene_data_path: /mnt/hdd2/saumya/experiment_results/semnav/hm3dsem-train
 save_obs: true
 save_freq: 10
 
 # Question answering
 vlm:
-  hf_token:
-  device: cuda
+  hf_token: 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
+  device: cuda:1
   model_id: prism-dinosiglip+7b
 
 # Camera, image

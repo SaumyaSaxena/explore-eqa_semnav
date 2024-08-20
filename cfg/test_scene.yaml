@@ -4,7 +4,7 @@ exp_name: test_scene
 output_parent_dir: results
 question_data_path: data/questions.csv
 init_pose_data_path: data/scene_init_poses.csv
-scene_data_path: /n/fs/llm-unc/hm3dsem-train
+scene_data_path: /mnt/hdd2/saumya/experiment_results/semnav/hm3dsem-train
 
 # Camera, image
 camera_height: 1.5

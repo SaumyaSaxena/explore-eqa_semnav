@@ -4,3 +4,6 @@ __pycache__/
 .png
 results
 results/*
+*dataset*
+gibson_scenes
+outputs
