@@ -180,7 +180,7 @@ if __name__== "__main__":
         messages=[
             {"role": "system", "content": f"{role_prompt}"},
             {"role": "user", "content": f" {input_prompt}."},
-            {"role": "user", "content": f" {input_prompt}. An example plan: {example}"}
+            {"role": "user", "content": f"An example plan: {example}"}
         ]
         completion = client.beta.chat.completions.parse(
             # model="gpt-4o-mini",
@@ -202,8 +202,6 @@ if __name__== "__main__":
             step = plan.parsed.steps[0]
             print(f'[State: {curr_state}, Action: {step_disc}]')
             print(list(step.model_dump().values())[0])
-            
-            
             
             if 'done_with_task' in step.action.value:
                 done = True
