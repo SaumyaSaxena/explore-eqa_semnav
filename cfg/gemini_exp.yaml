@@ -1,6 +1,6 @@
 # General
 seed: 42
-exp_name: prismatic_non_semantic_data
+exp_name: gemini_semantic
 output_parent_dir: results
 question_data_path: data/questions.csv
 init_pose_data_path: data/scene_init_poses.csv
@@ -8,7 +8,6 @@ scene_data_path: /mnt/hdd2/saumya/experiment_results/semnav/hm3dsem-train
 semantic_annot_data_path: /mnt/hdd1/saumyas/data/semnav/hm3d-train-semantic-annots-v0.2
 save_obs: true
 save_freq: 10
-use_only_semantic_data: False
 
 # Question answering
 vlm:
