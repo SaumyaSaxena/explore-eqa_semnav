@@ -1,15 +1,17 @@
 # General
 seed: 42
-exp_name: prismatic_one_step
-# exp_name: test
+exp_name: openeqa_prismatic #check
 output_parent_dir: results
-question_data_path: data/questions.csv
-init_pose_data_path: data/scene_init_poses.csv
-scene_data_path: /mnt/hdd1/saumya/experiment_results/semnav/hm3dsem-train
-semantic_annot_data_path: /mnt/hdd2/saumyas/data/semnav/hm3d-train-semantic-annots-v0.2
+openeqa_question_data_path: '/home/saumyas/catkin_ws_semnav/data/openEQA/open-eqa-v0.json'
+openeqa_choices_data_path: '/home/saumyas/Projects/semnav/explore-eqa_semnav/data/open-eqa-choices.json'
+openeqa_init_pose_data_path: '/home/saumyas/catkin_ws_semnav/data/openEQA/data/frames/hm3d-v0/openeqa_init_trajs.json'
+evaluation_prompt_file: '/home/saumyas/catkin_ws_semnav/src/hydra/python/src/hydra_python/openEQA/evaluation_prompt.txt'
+scene_data_path: '/home/saumyas/catkin_ws_semnav/data/hm3d_val/scene_datasets/hm3d/val'
+semantic_annot_data_path: '/home/saumyas/catkin_ws_semnav/data/hm3d_val/scene_datasets/hm3d/val/hm3d_annotated_val_basis.scene_dataset_config.json'
 save_obs: true
 save_freq: 10
-use_only_semantic_data: False
+use_multifloor_questions: False
+use_only_semantic_data: True #check
 
 # Question answering
 vlm:
@@ -35,8 +37,8 @@ min_random_init_steps: 2
 
 # Semantic map
 use_active: true
-use_lsv: False
-use_gsv: False
+use_lsv: true
+use_gsv: true
 gsv_T: 0.5
 gsv_F: 3
 planner:

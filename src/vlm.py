@@ -61,6 +61,7 @@ class VLM:
 
 class GeminiVLM:
     def __init__(self, cfg):
+        self.use_image = cfg.use_image
         genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
         self.gemini_model = genai.GenerativeModel(model_name="gemini-1.5-pro-latest")
 
@@ -173,45 +174,109 @@ class GeminiVLM:
 
         lsv = one_hot_encode(draw_letters, response_dict['answer'])
         return lsv, float(response_dict['explore_anywhere'])
-    
-    def get_global_exploration_value(self, image, prompt):
-        pass
-
-    def generate(self, prompt, image, T=0.4, max_tokens=512):
-        prompt_builder = self.model.get_prompt_builder()
-        prompt_builder.add_turn(role="human", message=prompt)
-        prompt_text = prompt_builder.get_prompt()
-        generated_text = self.model.generate(
-            image,
-            prompt_text,
-            do_sample=True,
-            temperature=T,
-            max_new_tokens=max_tokens,
-            min_length=1,
-        )
-
-        messages=[
-            {"role": "user", "parts": [{"text": f"{prompt}"}]},
-        ]
-        self.gemini_model.generate_content("Explain how AI works")
-
-        return generated_text
 
     def encode_image(self, image_path):
         with open(image_path, "rb") as image_file:
             return base64.b64encode(image_file.read()).decode('utf-8')
+
+
+
+from openai import OpenAI
+from pydantic import BaseModel
+
+class GPT4oVLM:
+    def __init__(self, cfg):
+        self.use_image = cfg.use_image
+        self.client = OpenAI()
+        self._vlm_type = "gpt-4o-2024-08-06"
+
+    def get_answer(self, image_path, prompt_question, prompt_confidence, vlm_pred_candidates, choices):
         
-    def get_loss(self, image, prompt, tokens, get_smx=True, T=1):
-        "Get unnormalized losses (negative logits) of the tokens"
-        prompt_builder = self.model.get_prompt_builder()
-        prompt_builder.add_turn(role="human", message=prompt)
-        prompt_text = prompt_builder.get_prompt()
-        losses = self.model.get_loss(
-            image,
-            prompt_text,
-            return_string_probabilities=tokens,
-        )[0]
-        losses = np.array(losses)
-        if get_smx:
-            return np.exp(-losses / T) / np.sum(np.exp(-losses / T))
-        return losses
+        Answer_options = Enum('Answer_options', {token: choice for token, choice in zip(vlm_pred_candidates, choices)}, type=str)
+
+        messages=[
+            {"role": "user", "content": f"{prompt_question} {prompt_confidence}"},
+        ]
+        if self.use_image:
+            base64_image = self.encode_image(image_path)
+            messages.append(
+                { 
+                    "role": "user",
+                    "content": [
+                        {
+                        "type": "text",
+                        "text": "CURRENT IMAGE: This image represents the current view of the agent. Use this as additional information to answer the question."
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
+                        }
+                    ]
+                })
+        
+        class Answer(BaseModel):
+            explanation_ans: str
+            answer: Answer_options
+            is_confident: bool
+
+        completion = self.client.beta.chat.completions.parse(
+            model=self._vlm_type,
+            messages=messages,
+            response_format=Answer,
+        )
+        for _ in range(10):
+            plan = completion.choices[0].message
+            if not (plan.refusal): # If the model refuses to respond, you will get a refusal message
+                break
+        ans = plan.parsed.answer.name
+        conf = plan.parsed.is_confident
+
+        smx_vlm_pred = one_hot_encode(vlm_pred_candidates, ans)
+        smx_vlm_rel = [1.0, 0.0] if conf else [0.0, 1.0]
+        return smx_vlm_pred, smx_vlm_rel
+
+
+    def get_frontier_and_gsv(self, prompted_img_path, prompt_lsv, prompt_gsv, draw_letters):
+
+        Draw_Letter_options = Enum('Draw_Letter_options', {let: let for let in draw_letters}, type=str)
+
+        messages=[
+            {"role": "user", "content": f"{prompt_lsv} {prompt_gsv}"},
+        ]
+        if self.use_image:
+            base64_image = self.encode_image(prompted_img_path)
+            messages.append(
+                { 
+                    "role": "user",
+                    "content": [
+                        {
+                        "type": "text",
+                        "text": "CURRENT IMAGE: This image represents the current view of the agent. Use this as additional information to answer the question."
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
+                        }
+                    ]
+                })
+        
+        class DrawLetter(BaseModel):
+            explanation_letter: str
+            draw_letter: Draw_Letter_options
+            explore_anywhere: bool
+
+        completion = self.client.beta.chat.completions.parse(
+            model=self._vlm_type,
+            messages=messages,
+            response_format=DrawLetter,
+        )
+        plan = completion.choices[0].message
+        letter = plan.parsed.draw_letter.name
+        explore_anywhere = plan.parsed.explore_anywhere
+
+        lsv = one_hot_encode(draw_letters, letter)
+        return lsv, float(explore_anywhere)
+
+    def encode_image(self, image_path):
+        with open(image_path, "rb") as image_file:
+            return base64.b64encode(image_file.read()).decode('utf-8')

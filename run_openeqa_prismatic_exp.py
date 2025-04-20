@@ -35,6 +35,7 @@ from src.geom import get_cam_intr, get_scene_bnds
 from src.vlm import VLM
 from src.tsdf import TSDFPlanner
 
+from src.utils import load_openeqa_data
 
 def main(cfg):
     camera_tilt = cfg.camera_tilt_deg * np.pi / 180
@@ -42,35 +43,7 @@ def main(cfg):
     img_width = cfg.img_width
     cam_intr = get_cam_intr(cfg.hfov, img_height, img_width)
 
-    # Load dataset
-    with open(cfg.question_data_path) as f:
-        full_questions_data = [
-            {k: v for k, v in row.items()}
-            for row in csv.DictReader(f, skipinitialspace=True)
-        ]
-    # Filter to include only scenes with semantic annotations
-    semantic_scenes = [f for f in os.listdir(cfg.semantic_annot_data_path) if os.path.isdir(os.path.join(cfg.semantic_annot_data_path, f))]
-    
-    if cfg.use_only_semantic_data:
-        questions_data = []
-        for data in full_questions_data:
-            if data['scene'] in semantic_scenes:
-                questions_data.append(data)
-    else:
-        questions_data = full_questions_data.copy()
-
-    with open(cfg.init_pose_data_path) as f:
-        init_pose_data = {}
-        for row in csv.DictReader(f, skipinitialspace=True):
-            init_pose_data[row["scene_floor"]] = {
-                "init_pts": [
-                    float(row["init_x"]),
-                    float(row["init_y"]),
-                    float(row["init_z"]),
-                ],
-                "init_angle": float(row["init_angle"]),
-            }
-    logging.info(f"Loaded {len(questions_data)} questions.")
+    questions_data, init_pose_data, choices_data = load_openeqa_data(cfg)
 
     # Load VLM
     vlm = VLM(cfg.vlm)
@@ -82,16 +55,23 @@ def main(cfg):
 
         # Extract question
         question_data = questions_data[question_ind]
-        scene = question_data["scene"]
-        floor = question_data["floor"]
-        scene_floor = scene + "_" + floor
+        question_id = question_data["question_id"]
+
+        scene = init_pose_data[question_data['episode_history']]["scene_id"]
+        # floor = question_data["floor"]
+        # scene_floor = scene + "_" + floor
         question = question_data["question"]
-        choices = [c.split("'")[1] for c in question_data["choices"].split("',")]
-        answer = question_data["answer"]
-        import ipdb; ipdb.set_trace()
-        init_pts = init_pose_data[scene_floor]["init_pts"]
-        init_angle = init_pose_data[scene_floor]["init_angle"]
-        logging.info(f"\n========\nIndex: {question_ind} Scene: {scene} Floor: {floor}")
+        choices = choices_data[question_id]['choices']
+
+        # choices = [c.split("'")[1] for c in question_data["choices"].split("',")]
+        answer = choices_data[question_id]["answer_id"]
+        # init_pts = init_pose_data[scene_floor]["init_pts"]
+        # init_angle = init_pose_data[scene_floor]["init_angle"]
+
+        init_pts = init_pose_data[question_data['episode_history']]["init_pos"]
+        init_angle = init_pose_data[question_data['episode_history']]["init_angle"]
+
+        logging.info(f"\n=========Index: {question_ind} Scene: {question_id}=======")
 
         # Re-format the question to follow LLaMA style
         vlm_question = question
@@ -103,19 +83,17 @@ def main(cfg):
         # Set data dir for this question - set initial data to be saved
         episode_data_dir = os.path.join(cfg.output_dir, str(question_ind))
         os.makedirs(episode_data_dir, exist_ok=True)
-        result = {"question_ind": question_ind}
+        result = {"question_ind": question_ind, 'question_id': question_id, 'category': question_data['category']}
 
         # Set up scene in Habitat
         try:
             simulator.close()
         except:
             pass
-        scene_mesh_dir = os.path.join(
-            cfg.scene_data_path, scene, scene[6:] + ".basis" + ".glb"
-        )
-        navmesh_file = os.path.join(
-            cfg.scene_data_path, scene, scene[6:] + ".basis" + ".navmesh"
-        )
+
+        scene_mesh_dir = os.path.join(cfg.scene_data_path, scene)
+        navmesh_file = os.path.join(cfg.scene_data_path, f"{scene[:-3]}navmesh")
+
         sim_settings = {
             "scene": scene_mesh_dir,
             "default_agent": 0,
@@ -157,9 +135,11 @@ def main(cfg):
             init_clearance=cfg.init_clearance * 2,
         )
 
+        if cfg.terminate_after_one_step:
+            num_step = 1
+
         # Run steps
         pts_pixs = np.empty((0, 2))  # for plotting path on the image
-        # num_step=1
         for cnt_step in range(num_step):
             logging.info(f"\n== step: {cnt_step}")
 
@@ -385,7 +365,7 @@ def main(cfg):
 
         # Episode summary
         logging.info(f"\n== Episode Summary")
-        logging.info(f"Scene: {scene}, Floor: {floor}")
+        logging.info(f"Scene: {scene}")
         logging.info(f"Question:\n{vlm_question}\nAnswer: {answer}")
         logging.info(f"Success (weighted): {success_weighted}")
         logging.info(f"Success (max): {success_max}")

@@ -32,9 +32,23 @@ from src.habitat import (
     pose_normal_to_tsdf,
 )
 from src.geom import get_cam_intr, get_scene_bnds
-from src.vlm import VLM
+from src.vlm import GeminiVLM, GPT4oVLM
 from src.tsdf import TSDFPlanner
 
+import csv, os, ast
+
+from src.utils import load_openeqa_data
+
+def get_instruction_from_eqa_data(question_data):
+    question = question_data["question"]
+    # self.choices = [c.split("'")[1] for c in question_data["choices"].split("',")]
+    choices = ast.literal_eval(question_data["choices"])
+    # Re-format the question to follow LLaMA style
+    vlm_question = question
+    vlm_pred_candidates = ["A", "B", "C", "D"]
+    for token, choice in zip(vlm_pred_candidates, choices):
+        vlm_question += "\n" + token + "." + " " + choice
+    return vlm_question, choices, vlm_pred_candidates
 
 def main(cfg):
     camera_tilt = cfg.camera_tilt_deg * np.pi / 180
@@ -42,56 +56,33 @@ def main(cfg):
     img_width = cfg.img_width
     cam_intr = get_cam_intr(cfg.hfov, img_height, img_width)
 
-    # Load dataset
-    with open(cfg.question_data_path) as f:
-        full_questions_data = [
-            {k: v for k, v in row.items()}
-            for row in csv.DictReader(f, skipinitialspace=True)
-        ]
-    # Filter to include only scenes with semantic annotations
-    semantic_scenes = [f for f in os.listdir(cfg.semantic_annot_data_path) if os.path.isdir(os.path.join(cfg.semantic_annot_data_path, f))]
-    
-    if cfg.use_only_semantic_data:
-        questions_data = []
-        for data in full_questions_data:
-            if data['scene'] in semantic_scenes:
-                questions_data.append(data)
-    else:
-        questions_data = full_questions_data.copy()
-
-    with open(cfg.init_pose_data_path) as f:
-        init_pose_data = {}
-        for row in csv.DictReader(f, skipinitialspace=True):
-            init_pose_data[row["scene_floor"]] = {
-                "init_pts": [
-                    float(row["init_x"]),
-                    float(row["init_y"]),
-                    float(row["init_z"]),
-                ],
-                "init_angle": float(row["init_angle"]),
-            }
-    logging.info(f"Loaded {len(questions_data)} questions.")
+    questions_data, init_pose_data, choices_data = load_openeqa_data(cfg)
 
     # Load VLM
-    vlm = VLM(cfg.vlm)
-
+    if 'gemini' in cfg.vlm.name:
+        vlm = GeminiVLM(cfg.vlm)
+    elif 'gpt' in cfg.vlm.name:
+        vlm = GPT4oVLM(cfg.vlm)
+    else:
+        raise NotImplementedError('VLM not defined')
     # Run all questions
-    cnt_data = 0
+    cnt_data = 50
     results_all = []
-    for question_ind in tqdm(range(len(questions_data))):
+    for question_ind in tqdm(range(cnt_data, len(questions_data))):
 
         # Extract question
         question_data = questions_data[question_ind]
-        scene = question_data["scene"]
-        floor = question_data["floor"]
-        scene_floor = scene + "_" + floor
+        question_id = question_data["question_id"]
+
+        scene = init_pose_data[question_data['episode_history']]["scene_id"]
+
         question = question_data["question"]
-        choices = [c.split("'")[1] for c in question_data["choices"].split("',")]
-        answer = question_data["answer"]
-        import ipdb; ipdb.set_trace()
-        init_pts = init_pose_data[scene_floor]["init_pts"]
-        init_angle = init_pose_data[scene_floor]["init_angle"]
-        logging.info(f"\n========\nIndex: {question_ind} Scene: {scene} Floor: {floor}")
+        choices = choices_data[question_id]['choices']
+        answer = choices_data[question_id]["answer_id"]
+
+        init_pts = init_pose_data[question_data['episode_history']]["init_pos"]
+        init_angle = init_pose_data[question_data['episode_history']]["init_angle"]
+        logging.info(f"\n=========Index: {question_ind} Scene: {question_id}=======")
 
         # Re-format the question to follow LLaMA style
         vlm_question = question
@@ -103,19 +94,17 @@ def main(cfg):
         # Set data dir for this question - set initial data to be saved
         episode_data_dir = os.path.join(cfg.output_dir, str(question_ind))
         os.makedirs(episode_data_dir, exist_ok=True)
-        result = {"question_ind": question_ind}
+        result = {"question_ind": question_ind, 'question_id': question_id, 'category': question_data['category']}
 
         # Set up scene in Habitat
         try:
             simulator.close()
         except:
             pass
-        scene_mesh_dir = os.path.join(
-            cfg.scene_data_path, scene, scene[6:] + ".basis" + ".glb"
-        )
-        navmesh_file = os.path.join(
-            cfg.scene_data_path, scene, scene[6:] + ".basis" + ".navmesh"
-        )
+
+        scene_mesh_dir = os.path.join(cfg.scene_data_path, scene)
+        navmesh_file = os.path.join(cfg.scene_data_path, f"{scene[:-3]}navmesh")
+
         sim_settings = {
             "scene": scene_mesh_dir,
             "default_agent": 0,
@@ -157,9 +146,12 @@ def main(cfg):
             init_clearance=cfg.init_clearance * 2,
         )
 
+        if cfg.terminate_after_one_step:
+            num_step = 1
+
         # Run steps
         pts_pixs = np.empty((0, 2))  # for plotting path on the image
-        # num_step=1
+
         for cnt_step in range(num_step):
             logging.info(f"\n== step: {cnt_step}")
 
@@ -186,10 +178,11 @@ def main(cfg):
             obs = simulator.get_sensor_observations()
             rgb = obs["color_sensor"]
             depth = obs["depth_sensor"]
+            image_save_location = os.path.join(episode_data_dir, "{}.png".format(cnt_step))
+
             if cfg.save_obs:
-                plt.imsave(
-                    os.path.join(episode_data_dir, "{}.png".format(cnt_step)), rgb
-                )
+                plt.imsave(image_save_location, rgb)
+
             num_black_pixels = np.sum(
                 np.sum(rgb, axis=-1) == 0
             )  # sum over channel first
@@ -212,16 +205,21 @@ def main(cfg):
                     vlm_question
                     + "\nAnswer with the option's letter from the given choices directly."
                 )
-                # logging.info(f"Prompt Pred: {prompt_question}")
-                smx_vlm_pred = vlm.get_loss(
-                    rgb_im, prompt_question, vlm_pred_candidates
-                )
-                logging.info(f"Pred - Prob: {smx_vlm_pred}")
 
                 # Get VLM relevancy
-                prompt_rel = f"\nConsider the question: '{question}'. Are you confident about answering the question with the current view? Answer with Yes or No."
-                # logging.info(f"Prompt Rel: {prompt_rel}")
-                smx_vlm_rel = vlm.get_loss(rgb_im, prompt_rel, ["Yes", "No"])
+                prompt_confidence = f"Are you confident about answering the question with the current view? Answer with True or False."
+                
+                # # logging.info(f"Prompt Pred: {prompt_question}")
+                # smx_vlm_pred = vlm.get_loss(
+                #     rgb_im, prompt_question, vlm_pred_candidates
+                # )
+
+                smx_vlm_pred, smx_vlm_rel = vlm.get_answer(
+                    image_save_location, prompt_question, prompt_confidence, vlm_pred_candidates, choices
+                )
+
+                logging.info(f"Pred - Prob: {smx_vlm_pred}")
+                # smx_vlm_rel = vlm.get_loss(rgb_im, prompt_rel, ["Yes", "No"])
                 logging.info(f"Rel - Prob: {smx_vlm_rel}")
 
                 # Get frontier candidates
@@ -238,11 +236,7 @@ def main(cfg):
                         )
                     )
                     fig.tight_layout()
-                    plt.savefig(
-                        os.path.join(
-                            episode_data_dir, "{}_prompt_points.png".format(cnt_step)
-                        )
-                    )
+                    plt.savefig(os.path.join(episode_data_dir, "{}_prompt_points.png".format(cnt_step)))
                     plt.close()
 
                 # Visual prompting
@@ -275,35 +269,45 @@ def main(cfg):
                             anchor="mm",
                             font_size=12,
                         )
-                    rgb_im_draw.save(
-                        os.path.join(episode_data_dir, f"{cnt_step}_draw.png")
-                    )
+                    prompted_img_path = os.path.join(episode_data_dir, f"{cnt_step}_draw.png")
+                    rgb_im_draw.save(prompted_img_path)
 
+                    prompt_lsv = f"\nConsider the question: '{question}', and you will explore the environment for answering it.\nWhich direction (black letters on the image) would you explore then? Answer with a single letter."
+                    prompt_gsv = " Is there any other direction in the image worth exploring? Answer with True or False"
+                    lsv, gsv = vlm.get_frontier_and_gsv(
+                        prompted_img_path,
+                        prompt_lsv, prompt_gsv,
+                        draw_letters[:actual_num_prompt_points],
+                    )
+                    gsv = (
+                        np.exp(gsv / cfg.gsv_T) / cfg.gsv_F
+                    )
+                    
                     # get VLM reasoning for exploring
-                    if cfg.use_lsv:
-                        prompt_lsv = f"\nConsider the question: '{question}', and you will explore the environment for answering it.\nWhich direction (black letters on the image) would you explore then? Answer with a single letter."
-                        # logging.info(f"Prompt Exp: {prompt_text}")
-                        lsv = vlm.get_loss(
-                            rgb_im_draw,
-                            prompt_lsv,
-                            draw_letters[:actual_num_prompt_points],
-                        )
-                        lsv *= actual_num_prompt_points / 3
-                    else:
-                        lsv = (
-                            np.ones(actual_num_prompt_points) / actual_num_prompt_points
-                        )
+                    # if cfg.use_lsv:
+                    #     prompt_lsv = f"\nConsider the question: '{question}', and you will explore the environment for answering it.\nWhich direction (black letters on the image) would you explore then? Answer with a single letter."
+                    #     # logging.info(f"Prompt Exp: {prompt_text}")
+                    #     lsv = vlm.get_loss(
+                    #         rgb_im_draw,
+                    #         prompt_lsv,
+                    #         draw_letters[:actual_num_prompt_points],
+                    #     )
+                    #     lsv *= actual_num_prompt_points / 3
+                    # else:
+                    #     lsv = (
+                    #         np.ones(actual_num_prompt_points) / actual_num_prompt_points
+                    #     )
 
                     # base - use image without label
-                    if cfg.use_gsv:
-                        prompt_gsv = f"\nConsider the question: '{question}', and you will explore the environment for answering it. Is there any direction shown in the image worth exploring? Answer with Yes or No."
-                        # logging.info(f"Prompt Exp base: {prompt_gsv}")
-                        gsv = vlm.get_loss(rgb_im, prompt_gsv, ["Yes", "No"])[0]
-                        gsv = (
-                            np.exp(gsv / cfg.gsv_T) / cfg.gsv_F
-                        )  # scale before combined with lsv
-                    else:
-                        gsv = 1
+                    # if cfg.use_gsv:
+                    #     prompt_gsv = f"\nConsider the question: '{question}', and you will explore the environment for answering it. Is there any direction shown in the image worth exploring? Answer with Yes or No."
+                    #     # logging.info(f"Prompt Exp base: {prompt_gsv}")
+                    #     gsv = vlm.get_loss(rgb_im, prompt_gsv, ["Yes", "No"])[0]
+                    #     gsv = (
+                    #         np.exp(gsv / cfg.gsv_T) / cfg.gsv_F
+                    #     )  # scale before combined with lsv
+                    # else:
+                    #     gsv = 1
 
                     sv = lsv * gsv
                     logging.info(f"Exp - LSV: {lsv} GSV: {gsv} SV: {sv}")
@@ -349,11 +353,15 @@ def main(cfg):
                 * quat_from_angle_axis(camera_tilt, np.array([1, 0, 0]))
             ).tolist()
 
+            if result[step_name]["smx_vlm_rel"][0] == 1 and cfg.terminate_when_confident:
+                break
+
         # Check if success using weighted prediction
         smx_vlm_all = np.empty((0, 4))
         relevancy_all = []
         candidates = ["A", "B", "C", "D"]
-        for step in range(num_step):
+        steps = [k.split('step_')[1] for k in result.keys() if k.startswith('step')]
+        for step in range(len(steps)):
             smx_vlm_pred = result[f"step_{step}"]["smx_vlm_pred"]
             smx_vlm_rel = result[f"step_{step}"]["smx_vlm_rel"]
             relevancy_all.append(smx_vlm_rel[0])
@@ -375,7 +383,6 @@ def main(cfg):
         result["num_max_steps"] = max_relevancy
         result["success_max"] = success_max
 
-        steps = [k.split('step_')[1] for k in result.keys() if k.startswith('step')]
         traj = np.array([result[f'step_{s}']['pts'] for s in steps])
         deltas = np.diff(traj, axis=0)
         segment_lengths = np.linalg.norm(deltas, axis=1)
@@ -383,17 +390,20 @@ def main(cfg):
         result["weighted_traj_len"] = np.sum(segment_lengths[:num_weighted_steps])
         result["max_traj_len"] = np.sum(segment_lengths[:max_relevancy])
 
+
         # Episode summary
         logging.info(f"\n== Episode Summary")
-        logging.info(f"Scene: {scene}, Floor: {floor}")
+        logging.info(f"Scene: {scene}")
         logging.info(f"Question:\n{vlm_question}\nAnswer: {answer}")
         logging.info(f"Success (weighted): {success_weighted}")
         logging.info(f"Success (max): {success_max}")
         logging.info(
             f"Top 3 steps with highest relevancy with value: {relevancy_ord[:3]} {[relevancy_all[i] for i in relevancy_ord[:3]]}"
         )
-        # for rel_ind in range(3):
-        #     logging.info(f"Prediction: {smx_vlm_all[relevancy_ord[rel_ind]]}")
+
+        if not cfg.terminate_when_confident:
+            for rel_ind in range(3):
+                logging.info(f"Prediction: {smx_vlm_all[relevancy_ord[rel_ind]]}")
 
         # Save data
         results_all.append(result)

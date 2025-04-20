@@ -32,7 +32,7 @@ from src.habitat import (
     pose_normal_to_tsdf,
 )
 from src.geom import get_cam_intr, get_scene_bnds
-from src.vlm import GeminiVLM
+from src.vlm import GeminiVLM, GPT4oVLM
 from src.tsdf import TSDFPlanner
 
 import csv, os, ast
@@ -62,10 +62,14 @@ def main(cfg):
         ]
     # Filter to include only scenes with semantic annotations
     semantic_scenes = [f for f in os.listdir(cfg.semantic_annot_data_path) if os.path.isdir(os.path.join(cfg.semantic_annot_data_path, f))]
-    questions_data = []
-    for data in full_questions_data:
-        if data['scene'] in semantic_scenes:
-            questions_data.append(data)
+
+    if cfg.use_only_semantic_data:
+        questions_data = []
+        for data in full_questions_data:
+            if data['scene'] in semantic_scenes:
+                questions_data.append(data)
+    else:
+        questions_data = full_questions_data.copy()
 
     with open(cfg.init_pose_data_path) as f:
         init_pose_data = {}
@@ -81,12 +85,16 @@ def main(cfg):
     logging.info(f"Loaded {len(questions_data)} questions.")
 
     # Load VLM
-    vlm = GeminiVLM(cfg.vlm)
-
+    if 'gemini' in cfg.vlm.name:
+        vlm = GeminiVLM(cfg.vlm)
+    elif 'gpt' in cfg.vlm.name:
+        vlm = GPT4oVLM(cfg.vlm)
+    else:
+        raise NotImplementedError('VLM not defined')
     # Run all questions
-    cnt_data = 0
+    cnt_data = 350
     results_all = []
-    for question_ind in tqdm(range(len(questions_data))):
+    for question_ind in tqdm(range(350,len(questions_data))):
 
         # Extract question
         question_data = questions_data[question_ind]
@@ -167,6 +175,10 @@ def main(cfg):
 
         # Run steps
         pts_pixs = np.empty((0, 2))  # for plotting path on the image
+
+        if cfg.terminate_after_one_step:
+            num_step = 1
+
         for cnt_step in range(num_step):
             logging.info(f"\n== step: {cnt_step}")
 
@@ -368,24 +380,43 @@ def main(cfg):
                 * quat_from_angle_axis(camera_tilt, np.array([1, 0, 0]))
             ).tolist()
 
+            if result[step_name]["smx_vlm_rel"][0] == 1 and cfg.terminate_when_confident:
+                break
+
         # Check if success using weighted prediction
         smx_vlm_all = np.empty((0, 4))
         relevancy_all = []
         candidates = ["A", "B", "C", "D"]
-        for step in range(num_step):
+        steps = [k.split('step_')[1] for k in result.keys() if k.startswith('step')]
+        for step in range(len(steps)):
             smx_vlm_pred = result[f"step_{step}"]["smx_vlm_pred"]
             smx_vlm_rel = result[f"step_{step}"]["smx_vlm_rel"]
             relevancy_all.append(smx_vlm_rel[0])
             smx_vlm_all = np.vstack((smx_vlm_all, smx_vlm_rel[0] * smx_vlm_pred))
+        
         # Option 1: use the max of the weighted predictions
         smx_vlm_max = np.max(smx_vlm_all, axis=0)
+        smx_vlm_max_idx = np.argmax(smx_vlm_all, axis=0)
         pred_token = candidates[np.argmax(smx_vlm_max)]
         success_weighted = pred_token == answer
+        num_weighted_steps = smx_vlm_max_idx[np.argmax(smx_vlm_max)]
+        result["num_weighted_steps"] = num_weighted_steps
+        result["success_weighted"] = success_weighted
         # Option 2: use the max of the relevancy
         max_relevancy = np.argmax(relevancy_all)
         relevancy_ord = np.flip(np.argsort(relevancy_all))
         pred_token = candidates[np.argmax(smx_vlm_all[max_relevancy])]
         success_max = pred_token == answer
+        result["num_max_steps"] = max_relevancy
+        result["success_max"] = success_max
+
+        traj = np.array([result[f'step_{s}']['pts'] for s in steps])
+        deltas = np.diff(traj, axis=0)
+        segment_lengths = np.linalg.norm(deltas, axis=1)
+        result["total_traj_len"] = np.sum(segment_lengths)
+        result["weighted_traj_len"] = np.sum(segment_lengths[:num_weighted_steps])
+        result["max_traj_len"] = np.sum(segment_lengths[:max_relevancy])
+
 
         # Episode summary
         logging.info(f"\n== Episode Summary")
@@ -396,8 +427,10 @@ def main(cfg):
         logging.info(
             f"Top 3 steps with highest relevancy with value: {relevancy_ord[:3]} {[relevancy_all[i] for i in relevancy_ord[:3]]}"
         )
-        for rel_ind in range(3):
-            logging.info(f"Prediction: {smx_vlm_all[relevancy_ord[rel_ind]]}")
+
+        if not cfg.terminate_when_confident:
+            for rel_ind in range(3):
+                logging.info(f"Prediction: {smx_vlm_all[relevancy_ord[rel_ind]]}")
 
         # Save data
         results_all.append(result)
