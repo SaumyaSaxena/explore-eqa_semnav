@@ -1,6 +1,6 @@
 # General
 seed: 42
-exp_name: openeqa_gpt4o_early_term_non_semantic_data_single_floor #check
+exp_name: openeqa_gemini_early_term_non_semantic_data_single_floor #check
 output_parent_dir: results
 openeqa_question_data_path: '/home/saumyas/catkin_ws_semnav/data/openEQA/open-eqa-v0.json'
 openeqa_choices_data_path: '/home/saumyas/Projects/semnav/explore-eqa_semnav/data/open-eqa-choices.json'
@@ -18,7 +18,7 @@ terminate_after_one_step: False #check
 
 # Question answering
 vlm:
-  name: 'gpt' # 'gpt', 'gemini'
+  name: 'gemini' # 'gpt', 'gemini'
   use_image: True #check
 
 # Camera, image

@@ -22,7 +22,6 @@ def load_openeqa_data(cfg):
     with open(cfg.openeqa_choices_data_path, "r") as file:
         choices = json.load(file)
 
-
     semantic_scenes = [s.split('/*.basis')[0] for s in semantic_annots]
 
     filtered_question_data = []
@@ -37,13 +36,19 @@ def load_openeqa_data(cfg):
                     else:
                         if not check_if_multifloor(np.array(init_poses[data['episode_history']]['full_traj_pos'])[:,1]):
                             filtered_question_data.append(data)
-            else:
+            elif cfg.use_only_non_semantic_data:
                 if scene_id not in semantic_scenes:
                     if cfg.use_multifloor_questions:
                         filtered_question_data.append(data)
                     else:
                         if not check_if_multifloor(np.array(init_poses[data['episode_history']]['full_traj_pos'])[:,1]):
                             filtered_question_data.append(data)
+            else:
+                if cfg.use_multifloor_questions:
+                    filtered_question_data.append(data)
+                else:
+                    if not check_if_multifloor(np.array(init_poses[data['episode_history']]['full_traj_pos'])[:,1]):
+                        filtered_question_data.append(data)
 
     print(f"Loaded {len(filtered_question_data)} questions.")
     return filtered_question_data, init_poses, choices

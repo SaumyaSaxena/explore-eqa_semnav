@@ -7,7 +7,7 @@ if __name__ == "__main__":
     results_path = '/home/saumyas/Projects/semnav/explore-eqa_semnav/results/vlm_exp_semantic/'
     with open(results_path + 'results.pkl', 'rb') as file:
         results = pickle.load(file)
-    filename = results_path + 'metrics.json'
+    filename = results_path + 'metrics2.json'
     # data keys are ['question_ind', 'step_0', 'step_1', 'step_2', 'step_3', 'step_4', 'step_5', 'step_6', 'step_7', 'step_8', 'step_9', 'step_10', 'step_11', 'step_12', 'step_13', 'step_14', 'step_15', 'step_16', 'step_17', 'step_18', 'step_19', 'step_20', 'step_21', 'step_22', 'step_23', 'step_24', 'step_25', 'step_26', 'step_27', 'step_28', 'step_29', 'step_30', 'step_31', 'step_32', 'step_33', 'step_34']
     
     metrics = {}
@@ -16,10 +16,12 @@ if __name__ == "__main__":
     max_length_all_trajs = 0.
     planning_steps_weighted_all_trajs = 0
     planning_steps_max_all_trajs = 0
+    planning_steps_total = 0
     for i in range(len(results)):
         result = results[i]
         steps = [k.split('step_')[1] for k in result.keys() if k.startswith('step')]
         num_steps = len(steps)
+        planning_steps_total += num_steps
         pts = np.array([result[f'step_{s}']['pts'] for s in steps])
         deltas = np.diff(pts, axis=0)
         segment_lengths = np.linalg.norm(deltas, axis=1)
@@ -57,6 +59,7 @@ if __name__ == "__main__":
     metrics['planning_steps_weighted_all_trajs'] = float(planning_steps_weighted_all_trajs)
     metrics['planning_steps_max_all_trajs'] = float(planning_steps_max_all_trajs)
     metrics['num_episodes'] = len(results)
+    metrics['planning_steps_total'] = planning_steps_total
 
     print(f"Saving file: {filename}")
     with open(filename, 'w') as file:

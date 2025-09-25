@@ -32,7 +32,7 @@ from src.habitat import (
     pose_normal_to_tsdf,
 )
 from src.geom import get_cam_intr, get_scene_bnds
-from src.vlm import GeminiVLM, GPT4oVLM
+from src.vlm import GeminiVLM, GPT4oVLM, LlamaVLM
 from src.tsdf import TSDFPlanner
 
 import csv, os, ast
@@ -63,12 +63,26 @@ def main(cfg):
         vlm = GeminiVLM(cfg.vlm)
     elif 'gpt' in cfg.vlm.name:
         vlm = GPT4oVLM(cfg.vlm)
+    elif 'llama' in cfg.vlm.name.lower():
+        vlm = LlamaVLM(cfg.vlm)
     else:
         raise NotImplementedError('VLM not defined')
     # Run all questions
-    cnt_data = 50
+    cnt_data = 0
+    if 'gpt' in cfg.vlm.name.lower():
+        # Index 40 has a problem
+        cnt_data = 160
+
+    if 'gemini' in cfg.vlm.name.lower():
+        # gemini quota died at 53
+        cnt_data = 170
+
+    if 'llama' in cfg.vlm.name.lower():
+        cnt_data = 140
+
     results_all = []
     for question_ind in tqdm(range(cnt_data, len(questions_data))):
+    # for question_ind in tqdm(range(cnt_data, 50)):
 
         # Extract question
         question_data = questions_data[question_ind]

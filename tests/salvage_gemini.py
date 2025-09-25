@@ -13,11 +13,12 @@ if __name__ == "__main__":
         ]
 
     # Replace 'your_file.pkl' with the path to your .pkl file
-    results_path1 = '/home/saumyas/Projects/semnav/explore-eqa_semnav/results/gemini_all_data/'
-    results_path2 = '/home/saumyas/Projects/semnav/explore-eqa_semnav/results/gemini_all_data_contd/'
-    results_path3 = '/home/saumyas/Projects/semnav/explore-eqa_semnav/results/gemini_all_data_contd_early_term/'
+    # results_path1 = '/home/saumyas/Projects/semnav/explore-eqa_semnav/results/gemini_all_data/'
+    # results_path2 = '/home/saumyas/Projects/semnav/explore-eqa_semnav/results/gemini_all_data_contd/'
+    # results_path3 = '/home/saumyas/Projects/semnav/explore-eqa_semnav/results/gemini_all_data_contd_early_term/'
 
-    filename = results_path3 + 'metrics.json'
+    results_path = '/home/saumyas/Projects/semnav/explore-eqa_semnav/results/llama_early_term_semantic_only/'
+    filename = results_path + 'metrics.json'
     metrics = {}
     weighted_length_all_trajs = 0.
     max_length_all_trajs = 0.
@@ -26,7 +27,11 @@ if __name__ == "__main__":
     num_episodes = 0
     num_succ_weighted = 0
     num_succ_max = 0
-    good_pkls = [results_path1+"results_150.pkl", results_path1+"results_40.pkl", results_path2+"results_220.pkl", results_path3+"results.pkl"] 
+    # good_pkls = [results_path1+"results_150.pkl", results_path1+"results_40.pkl", results_path2+"results_220.pkl", results_path3+"results.pkl"] 
+    
+    good_pkls = [results_path+"results_10.pkl", results_path+"results_20.pkl", results_path+"results_30.pkl", results_path+"results_40.pkl",
+                 results_path+"results_50.pkl", results_path+"results_60.pkl", results_path+"results_70.pkl", results_path+"results_80.pkl",
+                 results_path+"results_90.pkl", results_path+"results_100.pkl", results_path+"results_110.pkl"] 
     
     ques_count = 0
     for file_name in good_pkls:

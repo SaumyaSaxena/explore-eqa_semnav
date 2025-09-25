@@ -12,7 +12,7 @@ if __name__ == "__main__":
     cfg = OmegaConf.load(cfg_file)
     OmegaConf.resolve(cfg)
 
-    results_path = '/home/saumyas/Projects/semnav/explore-eqa_semnav/results/openeqa_gpt4o_early_term/'
+    results_path = '/home/saumyas/Projects/semnav/explore-eqa_semnav/results/openeqa_prismatic_non_semantic_data_single_floor/'
     metrics_filename = results_path + 'metrics.json'
     questions_data, init_pose_data, choices_data = load_openeqa_data(cfg)
 

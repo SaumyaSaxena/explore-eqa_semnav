@@ -2,6 +2,14 @@ import pickle, json
 import numpy as np
 import csv
 
+def get_num_steps(result_keys):
+    step_count = 0
+    for key in result_keys:
+        if 'step_' in key:
+            step_count+=1
+
+    return step_count
+
 if __name__ == "__main__":
 
     # Load dataset
@@ -14,12 +22,25 @@ if __name__ == "__main__":
     identification_succ, existence_succ, count_succ, state_succ, location_succ = 0, 0, 0, 0, 0
 
     # Replace 'your_file.pkl' with the path to your .pkl file
-    results_path = '/home/saumyas/Projects/semnav/explore-eqa_semnav/results/llama_early_term_semantic_only/'
-    good_pkls = [results_path+"results_10.pkl", results_path+"results_20.pkl", results_path+"results_30.pkl", results_path+"results_40.pkl",
-                 results_path+"results_50.pkl", results_path+"results_60.pkl", results_path+"results_70.pkl", results_path+"results_80.pkl",
-                 results_path+"results_90.pkl", results_path+"results_100.pkl", results_path+"results_110.pkl"] 
+    results_path = '/home/saumyas/Projects/semnav/explore-eqa_semnav/results/gemini_early_term_non_semantic_only/'
+    # Good Gemini pickles
+    # good_pkls = [results_path+"results_10.pkl", results_path+"results_20.pkl", results_path+"results_30.pkl", results_path+"results_40.pkl",
+    #             results_path+"results_50.pkl", results_path+"results_100.pkl", results_path+"results_110.pkl"] 
 
-    # good_pkls = [results_path+"results_10.pkl", results_path+"results_70.pkl", results_path+"results_80.pkl", results_path+"results_100.pkl", results_path+"results_110.pkl"]
+    # good llama pickles
+    # good_pkls = [results_path+"results_10.pkl",
+    #             results_path+"results_70.pkl", results_path+"results_80.pkl",
+    #              results_path+"results_90.pkl", results_path+"results_100.pkl", results_path+"results_110.pkl"] 
+
+    # good llama non semantic only pickles
+    good_pkls = [results_path+"results.pkl"]
+    good_pkls = []
+    for i in range(1, 34):
+        if i in [3, 7, 9, 11, 13, 17, 23, 27, 31, 33]:
+            good_pkls.append(results_path + "results_" + str(i) + "0.pkl")
+    # good Gemini pickles
+
+
     filename = results_path + 'metrics_succ_conf_all_ques.json'
     filename_task = results_path + 'task_category_conf_all_ques.json'
 
@@ -30,6 +51,8 @@ if __name__ == "__main__":
     planning_steps_max_all_trajs = 0
     num_succ_weighted = 0
     num_succ_max = 0
+    total_steps = 0
+    total_traj_len = 0
 
     ques_count = 0
     
@@ -44,13 +67,16 @@ if __name__ == "__main__":
         # num_episodes += len(results)
 
         for result in results:
-            if ques_count>319 and ques_count<330:
-                ques_count+=1
-                continue
             
-            if result['question_ind'] == 12:
-                ques_count = result['question_ind']
-            if result['question_ind'] == 101:
+            # Here is where we reset the ques_count if we are missing a few experiments
+            # Llama: missing entries 10, 11, 100
+            # if result['question_ind'] == 12:
+            #     ques_count = result['question_ind']
+            # if result['question_ind'] == 101:
+            #     ques_count = result['question_ind']
+
+            # Gemini: missing entries 50 - 55, 100
+            if result['question_ind'] == 39:
                 ques_count = result['question_ind']
 
             # import ipdb; ipdb.set_trace()
@@ -75,6 +101,9 @@ if __name__ == "__main__":
                     metrics[result['question_ind']]['success_max'] = True
                     if result['num_max_steps'] == 0:
                         metrics[result['question_ind']]['success_at_step0'] = True
+
+                total_steps += get_num_steps(result.keys())
+                total_traj_len += result['total_traj_len']
 
                 if full_questions_data[result['question_ind']]['label'] == 'identification':
                     identification += 1
@@ -107,6 +136,10 @@ if __name__ == "__main__":
     metrics['num_episodes'] = ques_count
     metrics['num_succ_weighted'] = float(num_succ_weighted)
     metrics['num_succ_max'] = float(num_succ_max)
+    metrics['avg_num_max_steps'] = float(planning_steps_max_all_trajs / total_steps)
+    metrics['avg_num_weighted_steps'] = float(planning_steps_weighted_all_trajs / total_steps)
+    metrics['avg_traj_len_weighted'] = float(weighted_length_all_trajs / total_traj_len)
+    metrics['avg_traj_len_max'] = float(max_length_all_trajs / total_traj_len)
 
     print(f"Saving file: {filename}")
     with open(filename, 'w') as file:

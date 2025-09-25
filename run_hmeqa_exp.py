@@ -32,7 +32,7 @@ from src.habitat import (
     pose_normal_to_tsdf,
 )
 from src.geom import get_cam_intr, get_scene_bnds
-from src.vlm import GeminiVLM, GPT4oVLM
+from src.vlm import GeminiVLM, GPT4oVLM, LlamaVLM
 from src.tsdf import TSDFPlanner
 
 import csv, os, ast
@@ -68,6 +68,11 @@ def main(cfg):
         for data in full_questions_data:
             if data['scene'] in semantic_scenes:
                 questions_data.append(data)
+    elif cfg.use_only_non_semantic_data:
+        questions_data = []
+        for data in full_questions_data:
+            if data['scene'] not in semantic_scenes:
+                questions_data.append(data)
     else:
         questions_data = full_questions_data.copy()
 
@@ -89,12 +94,19 @@ def main(cfg):
         vlm = GeminiVLM(cfg.vlm)
     elif 'gpt' in cfg.vlm.name:
         vlm = GPT4oVLM(cfg.vlm)
+    elif 'llama' in cfg.vlm.name.lower():
+        vlm = LlamaVLM(cfg.vlm)
     else:
         raise NotImplementedError('VLM not defined')
+    
     # Run all questions
-    cnt_data = 350
+    cnt_data = 0
+    if 'gemini' in cfg.vlm.name.lower():
+        # quota died here...
+        cnt_data = 310
+
     results_all = []
-    for question_ind in tqdm(range(350,len(questions_data))):
+    for question_ind in tqdm(range(cnt_data, len(questions_data))):
 
         # Extract question
         question_data = questions_data[question_ind]

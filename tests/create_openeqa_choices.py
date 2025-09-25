@@ -2,6 +2,7 @@ import json
 from src.utils import load_openeqa_data
 from omegaconf import OmegaConf
 import numpy as np
+from pathlib import Path
 
 from openai import OpenAI
 from pydantic import BaseModel
@@ -42,14 +43,20 @@ def get_choices_answer_id(question, answer):
     return choices
 
 if __name__ == "__main__":
+    choices_semantic_save_pth = '/home/saumyas/Projects/semnav/explore-eqa_semnav/data/open-eqa-choices_semantic.json'
+    if Path(choices_semantic_save_pth).exists():
+        with open(choices_semantic_save_pth, 'r') as json_file:
+            choices_dict = json.load(json_file)
+    else:
+        choices_dict = {}
+
     choices_save_pth = '/home/saumyas/Projects/semnav/explore-eqa_semnav/data/open-eqa-choices.json'
-    cfg_file = '/home/saumyas/Projects/semnav/explore-eqa_semnav/cfg/openeqa_exp.yaml'
+    cfg_file = '/home/saumyas/Projects/semnav/explore-eqa_semnav/cfg/openeqa_prismatic_exp.yaml'
     cfg = OmegaConf.load(cfg_file)
     OmegaConf.resolve(cfg)
 
-    questions_data, init_pose_data = load_openeqa_data(cfg)
+    questions_data, init_pose_data, _ = load_openeqa_data(cfg)
 
-    choices_dict = {}
     # Create choices for each question
     for i, data in enumerate(questions_data):
         question = data['question']

@@ -16,8 +16,13 @@ if __name__ == "__main__":
 
     # Replace 'your_file.pkl' with the path to your .pkl file
     results_path = '/home/saumyas/Projects/semnav/explore-eqa_semnav/results/gpt4o_one_step/'
-    with open(results_path + 'results.pkl', 'rb') as file:
-        results = pickle.load(file)
+    # with open(results_path + 'results.pkl', 'rb') as file:
+    #     results = pickle.load(file)
+    
+    good_pkls = [results_path+"results_10.pkl", results_path+"results_20.pkl", results_path+"results_30.pkl", results_path+"results_40.pkl",
+                 results_path+"results_50.pkl", results_path+"results_60.pkl", results_path+"results_70.pkl", results_path+"results_80.pkl",
+                 results_path+"results_90.pkl", results_path+"results_100.pkl", results_path+"results_110.pkl"]
+    
     filename = results_path + 'metrics_succ_new.json'
     filename_task = results_path + 'task_category.json'
 
@@ -28,6 +33,9 @@ if __name__ == "__main__":
     num_succ_weighted = 0
     num_succ_max = 0
 
+    # for file_name in good_pkls:
+    #     with open(file_name, 'rb') as file:
+    #         results = pickle.load(file)
     for i in range(len(results)):
         result = results[i]
         if result['success_weighted']:
